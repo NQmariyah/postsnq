@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Cek Hasil UTS · PIE 1315 Pemrograman Jaringan II</title>
+<style>
+  :root{
+    --bg:#f6f3ee; --card:#fffdf9; --ink:#2d2a26; --muted:#7a736a;
+    --accent:#3f7d5a; --accent-soft:#e6f0ea; --line:#e7e1d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+       background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.6;padding:24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+        max-width:560px;width:100%;padding:32px 28px;box-shadow:0 10px 30px rgba(60,40,20,.06)}
+  h1{font-size:1.25rem;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:.9rem;margin:0 0 24px}
+  label{display:block;font-size:.85rem;color:var(--muted);margin:14px 0 6px}
+  input{width:100%;padding:12px 14px;font-size:1.05rem;border:1px solid var(--line);
+        border-radius:10px;background:#fff;letter-spacing:.04em}
+  input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+  button{margin-top:18px;width:100%;padding:12px;font-size:1rem;border:0;border-radius:10px;
+         background:var(--accent);color:#fff;cursor:pointer}
+  button:disabled{opacity:.6;cursor:wait}
+  .err{color:#a5523b;font-size:.9rem;margin-top:12px;min-height:1.2em}
+  .result{display:none;animation:fade .5s ease}
+  .icon{font-size:2.6rem;line-height:1}
+  .hi{color:var(--muted);margin:12px 0 2px}
+  .result h2{font-size:1.2rem;margin:0 0 12px}
+  .result p{margin:0 0 12px}
+  .notes{background:var(--accent-soft);border-radius:12px;padding:14px 16px;margin:16px 0}
+  .notes b{display:block;font-size:.9rem;margin-bottom:6px}
+  .notes ul{margin:0;padding-left:18px}
+  .notes li{margin:6px 0}
+  .closing{font-style:italic;color:var(--muted)}
+  .link{background:none;color:var(--accent);width:auto;padding:0;margin-top:8px;text-decoration:underline}
+  footer{margin-top:24px;padding-top:14px;border-top:1px dashed var(--line);
+         font-size:.78rem;color:var(--muted)}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<main class="card">
+  <section id="form">
+    <h1>Cek Hasil UTS</h1>
+    <p class="sub">PIE 1315 · Pemrograman Jaringan II</p>
+    <p>Halaman ini tidak menampilkan angka. Kamu hanya akan menerima pesan singkat tentang hasil UTS-mu, khusus untukmu.</p>
+    <form id="f" autocomplete="off">
+      <label for="npm">NPM</label>
+      <input id="npm" inputmode="numeric" pattern="[0-9]*" placeholder="contoh: 25782xxx" required>
+      <div id="pinWrap" style="display:none">
+        <label for="pin">PIN</label>
+        <input id="pin" type="password" inputmode="numeric" placeholder="PIN dari dosen">
+      </div>
+      <button id="btn" type="submit">Lihat pesan</button>
+      <div class="err" id="err"></div>
+    </form>
+  </section>
+
+  <section class="result" id="result">
+    <div class="icon" id="rIcon"></div>
+    <p class="hi" id="rHi"></p>
+    <h2 id="rTitle"></h2>
+    <div id="rBody"></div>
+    <div class="notes" id="rNotes"></div>
+    <p class="closing" id="rClose"></p>
+    <button class="link" id="back" type="button">Tutup</button>
+  </section>
+
+  <footer>
+    Pesan disusun dari hasil penilaian, tetapi angka nilaimu tidak disimpan di halaman ini.
+    Kalau ingin tahu rinciannya, silakan temui dosen pengampu langsung.
+    Mohon cek punyamu sendiri saja, ya. 🙏
+  </footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+let DATA = null;
+
+fetch("data.json", {cache: "no-store"})
+  .then(r => r.json())
+  .then(d => { DATA = d; if (d.needPin) $("pinWrap").style.display = "block"; })
+  .catch(() => { $("err").textContent = "Data belum tersedia. Coba muat ulang halaman."; });
+
+async function deriveKey(secret){
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name: "PBKDF2", hash: "SHA-256", salt: b64(DATA.salt), iterations: DATA.iter},
+    base, {name: "AES-GCM", length: 256}, false, ["decrypt"]);
+}
+
+async function findMessage(secret){
+  const key = await deriveKey(secret);
+  for (const e of DATA.entries){
+    try{
+      const pt = await crypto.subtle.decrypt({name: "AES-GCM", iv: b64(e.iv)}, key, b64(e.ct));
+      return JSON.parse(new TextDecoder().decode(pt).trim());
+    }catch(_){ /* bukan milik NPM ini */ }
+  }
+  return null;
+}
+
+function el(tag, text){ const n = document.createElement(tag); n.textContent = text; return n; }
+
+function show(m){
+  $("rIcon").textContent = m.icon;
+  $("rHi").textContent = `Halo, ${m.nama}.`;
+  $("rTitle").textContent = m.judul;
+  const body = $("rBody"); body.replaceChildren(...m.isi.map(p => el("p", p)));
+  const notes = $("rNotes");
+  if (m.catatan && m.catatan.length){
+    const ul = document.createElement("ul");
+    m.catatan.forEach(c => ul.appendChild(el("li", c)));
+    notes.replaceChildren(el("b", m.catatan_label || "Catatan:"), ul);
+    notes.style.display = "block";
+  } else notes.style.display = "none";
+  $("rClose").textContent = m.penutup;
+  $("form").style.display = "none";
+  $("result").style.display = "block";
+}
+
+$("f").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  $("err").textContent = "";
+  if (!DATA) return;
+  const npm = $("npm").value.replace(/\D/g, "");
+  if (npm.length < 8){ $("err").textContent = "NPM sepertinya belum lengkap."; return; }
+  let secret = npm;
+  if (DATA.needPin){
+    const pin = $("pin").value.trim();
+    if (!pin){ $("err").textContent = "PIN belum diisi."; return; }
+    secret = `${npm}:${pin}`;
+  }
+  $("btn").disabled = true; $("btn").textContent = "Sebentar…";
+  try{
+    const m = await findMessage(secret);
+    if (m) show(m);
+    else $("err").textContent = DATA.needPin
+      ? "NPM atau PIN tidak cocok. Coba periksa lagi, ya."
+      : "NPM tidak ditemukan. Coba periksa lagi, ya.";
+  } finally {
+    $("btn").disabled = false; $("btn").textContent = "Lihat pesan";
+  }
+});
+
+$("back").addEventListener("click", () => {
+  $("result").style.display = "none"; $("form").style.display = "block";
+  $("npm").value = ""; $("pin").value = ""; $("npm").focus();
+});
+</script>
+</body>
+</html>
